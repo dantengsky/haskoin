@@ -6,6 +6,7 @@ module Network.Haskoin.Block.Merkle
 , calcTreeHeight
 , calcTreeWidth
 , buildMerkleRoot
+, buildWitnessMerkleRoot 
 , calcHash
 , buildPartialMerkle
 , extractMatches
@@ -95,7 +96,16 @@ calcTreeWidth ntx h = (ntx + (1 `shiftL` h) - 1) `shiftR` h
 -- | Computes the root of a merkle tree from a list of leaf node hashes.
 buildMerkleRoot :: [TxHash]   -- ^ List of transaction hashes (leaf nodes).
                 -> MerkleRoot -- ^ Root of the merkle tree.
-buildMerkleRoot txs = calcHash (calcTreeHeight $ length txs) 0 txs
+buildMerkleRoot txs = calcHash (calcTreeHeight $ length txs) 0 $ map getTxHash txs 
+
+
+
+--TODO coinbase tx's wtxid is zeros
+-- | Computes the root of a merkle tree from a list of leaf node hashes.
+buildWitnessMerkleRoot :: [WTxHash]   -- ^ List of sw transaction hashes (leaf nodes).
+                       -> MerkleRoot  -- ^ Root of the merkle tree.
+--buildWitnessMerkleRoot (_:txs) = calcHash (calcTreeHeight $ length txs) 0 $ map getWTxHash $ coinbaseWTxHash : txs
+buildWitnessMerkleRoot (_:txs) = calcHash (calcTreeHeight $ (length txs) + 1) 0 $ map getWTxHash $ coinbaseWTxHash : txs
 
 hash2 :: Hash256 -> Hash256 -> Hash256
 hash2 a b = doubleHash256 $ encode a `BS.append` encode b
@@ -103,16 +113,16 @@ hash2 a b = doubleHash256 $ encode a `BS.append` encode b
 -- | Computes the hash of a specific node in a merkle tree.
 calcHash :: Int       -- ^ Height of the node in the merkle tree.
          -> Int       -- ^ Position of the node (0 for the leftmost node).
-         -> [TxHash]  -- ^ Transaction hashes of the merkle tree (leaf nodes).
+         -> [Hash256] -- ^ Transaction hashes of the merkle tree (leaf nodes).
          -> Hash256   -- ^ Hash of the node at the specified position.
-calcHash height pos txs
+calcHash height pos hashes
     | height < 0 || pos < 0 = error "calcHash: Invalid parameters"
-    | height == 0 = getTxHash $ txs !! pos
+    | height == 0 = hashes !! pos
     | otherwise = hash2 left right
   where
-    left = calcHash (height-1) (pos*2) txs
-    right | pos*2+1 < calcTreeWidth (length txs) (height-1) =
-                calcHash (height-1) (pos*2+1) txs
+    left = calcHash (height-1) (pos*2) hashes
+    right | pos*2+1 < calcTreeWidth (length hashes) (height-1) =
+                calcHash (height-1) (pos*2+1) hashes
           | otherwise = left
 
 -- | Build a partial merkle tree.
@@ -130,7 +140,7 @@ traverseAndBuild :: Int -> Int -> [(TxHash,Bool)]
                  -> (FlagBits, PartialMerkleTree)
 traverseAndBuild height pos txs
     | height < 0 || pos < 0 = error "traverseAndBuild: Invalid parameters"
-    | height == 0 || not match = ([match],[calcHash height pos t])
+    | height == 0 || not match = ([match],[calcHash height pos $ map getTxHash t] )
     | otherwise = (match : lb ++ rb, lh ++ rh)
   where
     t = map fst txs

@@ -33,6 +33,7 @@ module Network.Haskoin.Block
 , calcTreeHeight
 , calcTreeWidth
 , buildMerkleRoot
+, buildWitnessMerkleRoot
 , calcHash
 , buildPartialMerkle
 , extractMatches
