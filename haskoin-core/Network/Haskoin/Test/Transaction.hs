@@ -102,8 +102,12 @@ newtype ArbitraryTx = ArbitraryTx Tx
 instance Arbitrary ArbitraryTx where
     arbitrary = do
         v <- arbitrary
-        ni <- choose (0,5)
-        no <- choose (0,5)
+        ni <- choose (1,5)
+        no <- choose (1,5)
+
+        --ni <- return 0
+        --no <- return 0 
+
         inps <- vectorOf ni $ arbitrary >>= \(ArbitraryTxIn i) -> return i
         outs <- vectorOf no $ arbitrary >>= \(ArbitraryTxOut o) -> return o
         let uniqueInps = nubBy (\a b -> prevOutput a == prevOutput b) inps
@@ -119,8 +123,8 @@ newtype ArbitraryAddrOnlyTx = ArbitraryAddrOnlyTx Tx
 instance Arbitrary ArbitraryAddrOnlyTx where
     arbitrary = do
         v <- arbitrary
-        ni <- choose (0,5)
-        no <- choose (0,5)
+        ni <- choose (1,5)
+        no <- choose (1,5)
         inps <- vectorOf ni $
             arbitrary >>= \(ArbitraryAddrOnlyTxIn i) -> return i
         outs <- vectorOf no $
