@@ -20,6 +20,12 @@ module Network.Haskoin.Transaction
 , txHashToHex
 , nosigTxHash
 
+ -- *Segwit Transaction Specific funcs
+, wTxHash
+, wTxHashToHex
+, txWitness
+, Witness(..)
+
   -- *Build Transactions
 , buildTx
 , buildAddrTx
