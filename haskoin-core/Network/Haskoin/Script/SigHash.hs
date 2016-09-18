@@ -21,13 +21,16 @@ import           Data.Bits                         (clearBit, testBit)
 import           Data.ByteString                   (ByteString)
 import qualified Data.ByteString                   as BS (append, empty, init,
                                                           last, length, pack,
-                                                          singleton, splitAt)
+                                                          concat, singleton,
+                                                          splitAt)
 import           Data.Maybe                        (fromMaybe)
 import           Data.Serialize                    (Serialize, decode, encode,
                                                     get, getWord8, put,
-                                                    putWord8, runPut)
+                                                    putWord8, runPut,
+                                                    putWord64le, putWord32le)
+import           Data.String                       (fromString)
 import           Data.String.Conversions           (cs)
-import           Data.Word                         (Word8)
+import           Data.Word                         (Word8, Word64)
 import           Network.Haskoin.Crypto.ECDSA
 import           Network.Haskoin.Crypto.Hash
 import           Network.Haskoin.Script.Types
@@ -119,6 +122,68 @@ instance FromJSON SigHash where
 -- | Encodes a 'SigHash' to a 32 bit-long bytestring.
 encodeSigHash32 :: SigHash -> ByteString
 encodeSigHash32 sh = encode sh `BS.append` BS.pack [0,0,0]
+
+    
+
+-- | Computes the hash that will be used for signing a transaction.
+wtxSigHash :: Tx     -- ^ Transaction to sign.
+          -> Script  -- ^ Output script that is being spent.
+          -> Int     -- ^ Index of the input that is being signed.
+          -> SigHash -- ^ What parts of the transaction should be signed.
+          -> Word64  -- ^ amount of  value of the output spent by this input
+          -> Hash256 -- ^ Result hash to be signed.
+wtxSigHash tx out i sh amount = 
+  let
+    prevOuts = hashPrevouts sh $ map prevOutput $ txIn tx
+    seq      = hashSequence sh $ txIn tx
+    outpoint = prevOutput $ txIn tx !! i -- TODO should we(callee) validate the index?
+  in doubleHash256 $ BS.concat $ [ runPut . putWord32le $ txVersion tx
+                                 , encode prevOuts
+                                 , encode seq
+                                 , encode outpoint
+                                 , encode out 
+                                 , runPut . putWord64le $ amount
+                                 , encode . txInSequence $ txIn tx !! i
+                                 , runPut . putWord32le $ txLockTime tx
+                                 , encode sh]
+
+
+{--
+6. value of the output spent by this input (8-byte little endian)
+7. nSequence of the input (4-byte little endian)
+8. hashOutputs (32-byte hash)
+9. nLocktime of the transaction (4-byte little endian)
+10. sighash type of the signature (4-byte little endian)
+--}
+  
+
+hashPrevouts :: SigHash -> [OutPoint] -> Hash256
+hashPrevouts sh ops
+    | anyoneCanPay sh = emptyHash
+    | otherwise = doubleHash256 $ BS.concat $ map encode ops
+   
+-- if (!(nHashType & SIGHASH_ANYONECANPAY) && (nHashType & 0x1f) !=
+-- SIGHASH_SINGLE && (nHashType & 0x1f) != SIGHASH_NONE) { 
+hashSequence :: SigHash -> [TxIn] -> Hash256
+hashSequence sh txins
+    | (not $ anyoneCanPay sh) 
+      && (not $ isSigSingle sh) 
+      && (not $ isSigNone sh) = doubleHash256 $ BS.concat $ map (encode . txInSequence) txins
+    | otherwise = emptyHash
+
+--if ((nHashType & 0x1f) != SIGHASH_SINGLE && (nHashType & 0x1f) !=
+--SIGHASH_NONE)
+hashOutputs :: Int -> SigHash -> [TxOut] -> Hash256
+hashOutputs i sh txos
+    | (not $ isSigSingle sh) && (not $ isSigNone sh) = doubleHash256 $ BS.concat $ map encode txos 
+    --  ((nHashType & 0x1f) == SIGHASH_SINGLE && nIn < txTo.vout.size())
+    | (isSigSingle sh) && (i < length txos) =  doubleHash256 $ encode $ txos !! i
+    | otherwise = emptyHash
+
+emptyHash :: Hash256
+emptyHash = fromString $ replicate 64 '0'
+
+
 
 -- | Computes the hash that will be used for signing a transaction.
 txSigHash :: Tx      -- ^ Transaction to sign.
